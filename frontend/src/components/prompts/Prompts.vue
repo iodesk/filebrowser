@@ -17,6 +17,7 @@ import Info from "./Info.vue";
 import Delete from "./Delete.vue";
 import DeleteUser from "./DeleteUser.vue";
 import Download from "./Download.vue";
+import Archive from "./Archive.vue";
 import Rename from "./Rename.vue";
 import Move from "./Move.vue";
 import Copy from "./Copy.vue";
@@ -29,6 +30,7 @@ import Upload from "./Upload.vue";
 import DiscardEditorChanges from "./DiscardEditorChanges.vue";
 import ResolveConflict from "./ResolveConflict.vue";
 import CurrentPassword from "./CurrentPassword.vue";
+import Chmod from "./Chmod.vue";
 
 const layoutStore = useLayoutStore();
 
@@ -44,6 +46,7 @@ const components = new Map<string, any>([
   ["newFile", NewFile],
   ["newDir", NewDir],
   ["download", Download],
+  ["archive", Archive],
   ["replace", Replace],
   ["share", Share],
   ["upload", Upload],
@@ -52,6 +55,7 @@ const components = new Map<string, any>([
   ["discardEditorChanges", DiscardEditorChanges],
   ["resolve-conflict", ResolveConflict],
   ["current-password", CurrentPassword],
+  ["chmod", Chmod],
 ]);
 
 const modal = computed(() => {

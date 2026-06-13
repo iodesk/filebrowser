@@ -10,6 +10,27 @@ import (
 	"github.com/spf13/afero"
 )
 
+// RealPath resolves the on-disk absolute path for a virtual path inside afs.
+// When afs is an afero.BasePathFs the path is rebased onto the real root;
+// otherwise the path is returned as-is. It also handles filesystems that
+// expose a Base() method returning *afero.BasePathFs (e.g. ScopedFs).
+func RealPath(afs afero.Fs, p string) string {
+	if bfs, ok := afs.(*afero.BasePathFs); ok {
+		return afero.FullBaseFsPath(bfs, p)
+	}
+	// Support ScopedFs or any wrapper that exposes the underlying BasePathFs.
+	type baser interface {
+		Base() *afero.BasePathFs
+	}
+	if b, ok := afs.(baser); ok {
+		return afero.FullBaseFsPath(b.Base(), p)
+	}
+	return p
+}
+
+// realPath is a package-internal alias kept for backward compatibility.
+func realPath(afs afero.Fs, p string) string { return RealPath(afs, p) }
+
 // MoveFile moves file from src to dst.
 // By default the rename filesystem system call is used. If src and dst point to different volumes
 // the file copy is used as a fallback
@@ -32,6 +53,12 @@ func MoveFile(afs afero.Fs, src, dst string, fileMode, dirMode fs.FileMode) erro
 // CopyFile copies a file from source to dest and returns
 // an error if any.
 func CopyFile(afs afero.Fs, source, dest string, fileMode, dirMode fs.FileMode) error {
+	return CopyFileOwned(afs, source, dest, fileMode, dirMode, Ownership{})
+}
+
+// CopyFileOwned copies a file from source to dest and chowns the destination
+// to own immediately after creation.
+func CopyFileOwned(afs afero.Fs, source, dest string, fileMode, dirMode fs.FileMode, own Ownership) error {
 	// Open the source file.
 	src, err := afs.Open(source)
 	if err != nil {
@@ -39,8 +66,7 @@ func CopyFile(afs afero.Fs, source, dest string, fileMode, dirMode fs.FileMode) 
 	}
 	defer src.Close()
 
-	// Makes the directory needed to create the dst
-	// file.
+	// Makes the directory needed to create the dst file.
 	err = afs.MkdirAll(filepath.Dir(dest), dirMode)
 	if err != nil {
 		return err
@@ -59,17 +85,19 @@ func CopyFile(afs afero.Fs, source, dest string, fileMode, dirMode fs.FileMode) 
 		return err
 	}
 
-	// Copy the mode
+	// Copy the mode.
 	info, err := afs.Stat(source)
 	if err != nil {
 		return err
 	}
-	err = afs.Chmod(dest, info.Mode())
-	if err != nil {
+	if err = afs.Chmod(dest, info.Mode()); err != nil {
 		return err
 	}
 
-	return nil
+	// Resolve the real on-disk path so os.Lchown works even when afs is a
+	// BasePathFs (which returns virtual paths from afs methods).
+	realDest := realPath(afs, dest)
+	return own.Chown(realDest)
 }
 
 // CommonPrefix returns common directory path of provided files

@@ -248,3 +248,51 @@ export async function usage(url: string, signal: AbortSignal) {
     throw e;
   }
 }
+
+export async function archive(
+  filePaths: string[],
+  destination: string,
+  format: string
+) {
+  const res = await fetchURL("/api/archive", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      files: filePaths.map((f) => removePrefix(f)),
+      destination: removePrefix(destination),
+      format,
+    }),
+  });
+  return res;
+}
+
+export async function extract(source: string, destination: string) {
+  const res = await fetchURL("/api/extract", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      source: removePrefix(source),
+      destination: removePrefix(destination),
+    }),
+  });
+  return res;
+}
+
+export async function chmod(
+  path: string,
+  mode: string,
+  recursive: boolean = false,
+  dirMode: string = ""
+) {
+  const res = await fetchURL("/api/chmod", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      path: removePrefix(path),
+      mode,
+      dirMode,
+      recursive,
+    }),
+  });
+  return res;
+}

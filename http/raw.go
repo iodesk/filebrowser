@@ -10,10 +10,11 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/mholt/archives"
+
 	"github.com/filebrowser/filebrowser/v2/files"
 	"github.com/filebrowser/filebrowser/v2/fileutils"
 	"github.com/filebrowser/filebrowser/v2/users"
-	"github.com/mholt/archives"
 )
 
 func slashClean(name string) string {

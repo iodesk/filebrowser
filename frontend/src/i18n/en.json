@@ -11,6 +11,8 @@
     "create": "Create",
     "delete": "Delete",
     "download": "Download",
+    "compress": "Compress",
+    "extract": "Extract",
     "file": "File",
     "folder": "Folder",
     "fullScreen": "Toggle full screen",
@@ -54,7 +56,9 @@
     "overrideAll": "Replace all files in destination folder",
     "skipAll": "Skip all conflicting files",
     "renameAll": "Rename all files (create a copy)",
-    "singleDecision": "Decide for each conflicting file"
+    "singleDecision": "Decide for each conflicting file",
+    "chmod": "Permissions",
+    "apply": "Apply"
   },
   "download": {
     "downloadFile": "Download File",
@@ -141,6 +145,12 @@
     "displayName": "Display Name:",
     "download": "Download files",
     "downloadMessage": "Choose the format you wish to download.",
+    "archive": "Compress files",
+    "archiveMessage": "Choose the archive format.",
+    "extracting": "Extracting archive...",
+    "extractSuccess": "Archive extracted successfully.",
+    "compressing": "Compressing files...",
+    "compressSuccess": "Archive created successfully.",
     "error": "Something went wrong",
     "fileInfo": "File information",
     "filesSelected": "{count} files selected.",
@@ -179,7 +189,18 @@
     "skip": "Skip",
     "forbiddenError": "Forbidden Error",
     "currentPassword": "Your password",
-    "currentPasswordMessage": "Enter your password to validate this action."
+    "currentPasswordMessage": "Enter your password to validate this action.",
+    "chmod": "Change Permissions",
+    "chmodOctal": "Octal",
+    "chmodRead": "Read",
+    "chmodWrite": "Write",
+    "chmodExecute": "Execute",
+    "chmodOwner": "Owner",
+    "chmodGroup": "Group",
+    "chmodOthers": "Others",
+    "chmodRecursive": "Apply recursively to all contents",
+    "chmodFileMode": "File permissions",
+    "chmodDirMode": "Directory permissions"
   },
   "search": {
     "images": "Images",

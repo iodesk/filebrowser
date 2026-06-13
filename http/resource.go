@@ -15,11 +15,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shirou/gopsutil/v4/disk"
+	"github.com/spf13/afero"
+
 	fberrors "github.com/filebrowser/filebrowser/v2/errors"
 	"github.com/filebrowser/filebrowser/v2/files"
 	"github.com/filebrowser/filebrowser/v2/fileutils"
-	"github.com/shirou/gopsutil/v4/disk"
-	"github.com/spf13/afero"
 )
 
 var resourceGetHandler = withUser(func(w http.ResponseWriter, r *http.Request, d *data) (int, error) {
@@ -130,8 +131,23 @@ func resourcePostHandler(fileCache FileCache) handleFunc {
 
 		// Directories creation on POST.
 		if strings.HasSuffix(r.URL.Path, "/") {
+			own := d.user.Ownership()
+			var firstNewDir string
+			if own.IsSet() {
+				firstNewDir = findFirstNewDir(d.user.Fs, r.URL.Path)
+			}
+
 			err := d.user.Fs.MkdirAll(r.URL.Path, d.settings.DirMode)
-			return errToStatus(err), err
+			if err != nil {
+				return errToStatus(err), err
+			}
+
+			if own.IsSet() && firstNewDir != "" {
+				if err := chownDirTree(d.user.Fs, firstNewDir, path.Clean(r.URL.Path), own); err != nil {
+					return http.StatusInternalServerError, err
+				}
+			}
+			return http.StatusOK, nil
 		}
 
 		file, err := files.NewFileInfo(&files.FileOptions{
@@ -159,7 +175,7 @@ func resourcePostHandler(fileCache FileCache) handleFunc {
 		}
 
 		err = d.RunHook(func() error {
-			info, writeErr := writeFile(d.user.Fs, r.URL.Path, r.Body, d.settings.FileMode, d.settings.DirMode)
+			info, writeErr := writeFileOwned(d.user.Fs, r.URL.Path, r.Body, d.settings.FileMode, d.settings.DirMode, d.user.Ownership())
 			if writeErr != nil {
 				return writeErr
 			}
@@ -196,7 +212,7 @@ var resourcePutHandler = withUser(func(w http.ResponseWriter, r *http.Request, d
 	}
 
 	err = d.RunHook(func() error {
-		info, writeErr := writeFile(d.user.Fs, r.URL.Path, r.Body, d.settings.FileMode, d.settings.DirMode)
+		info, writeErr := writeFileOwned(d.user.Fs, r.URL.Path, r.Body, d.settings.FileMode, d.settings.DirMode, d.user.Ownership())
 		if writeErr != nil {
 			return writeErr
 		}
@@ -227,6 +243,7 @@ func resourcePatchHandler(fileCache FileCache) handleFunc {
 			return http.StatusForbidden, nil
 		}
 
+		// Refuse to copy/move to parent
 		err = checkParent(src, dst)
 		if err != nil {
 			return http.StatusBadRequest, err
@@ -294,10 +311,29 @@ func addVersionSuffix(source string, afs afero.Fs) string {
 }
 
 func writeFile(afs afero.Fs, dst string, in io.Reader, fileMode, dirMode fs.FileMode) (os.FileInfo, error) {
+	return writeFileOwned(afs, dst, in, fileMode, dirMode, fileutils.Ownership{})
+}
+
+func writeFileOwned(afs afero.Fs, dst string, in io.Reader, fileMode, dirMode fs.FileMode, own fileutils.Ownership) (os.FileInfo, error) {
 	dir, _ := path.Split(dst)
+
+	// Record which directories already exist before MkdirAll so we only chown
+	// the newly created ones.
+	var firstNewDir string
+	if own.IsSet() && dir != "" {
+		firstNewDir = findFirstNewDir(afs, dir)
+	}
+
 	err := afs.MkdirAll(dir, dirMode)
 	if err != nil {
 		return nil, err
+	}
+
+	// Chown all newly created parent directories.
+	if own.IsSet() && firstNewDir != "" {
+		if chownErr := chownDirTree(afs, firstNewDir, dir, own); chownErr != nil {
+			return nil, chownErr
+		}
 	}
 
 	file, err := afs.OpenFile(dst, os.O_RDWR|os.O_CREATE|os.O_TRUNC, fileMode)
@@ -312,7 +348,6 @@ func writeFile(afs afero.Fs, dst string, in io.Reader, fileMode, dirMode fs.File
 	}
 
 	// Sync the file to ensure all data is written to storage.
-	// to prevent file corruption.
 	if err := file.Sync(); err != nil {
 		return nil, err
 	}
@@ -323,7 +358,58 @@ func writeFile(afs afero.Fs, dst string, in io.Reader, fileMode, dirMode fs.File
 		return nil, err
 	}
 
+	// Chown the file to the user's system uid:gid if configured.
+	realDst := fileutils.RealPath(afs, dst)
+	if err := own.Chown(realDst); err != nil {
+		return nil, err
+	}
+
 	return info, nil
+}
+
+// findFirstNewDir walks up from target until it finds a directory that already
+// exists, then returns the first child that does NOT exist yet. Returns "" if
+// target already exists.
+func findFirstNewDir(afs afero.Fs, target string) string {
+	target = path.Clean(target)
+	if _, err := afs.Stat(target); err == nil {
+		return "" // already exists
+	}
+	candidate := target
+	for {
+		parent := path.Dir(candidate)
+		if parent == candidate {
+			return candidate
+		}
+		if _, err := afs.Stat(parent); err == nil {
+			return candidate
+		}
+		candidate = parent
+	}
+}
+
+// chownDirTree chowns all directories from firstNew down to (and including) leaf.
+func chownDirTree(afs afero.Fs, firstNew, leaf string, own fileutils.Ownership) error {
+	leaf = path.Clean(leaf)
+	cur := path.Clean(firstNew)
+	for {
+		realDir := fileutils.RealPath(afs, cur)
+		if err := own.Chown(realDir); err != nil {
+			return err
+		}
+		if cur == leaf {
+			break
+		}
+		// Walk down — find next segment. Since MkdirAll already created
+		// all dirs, we advance by appending one path element at a time.
+		rel, _ := filepath.Rel(cur, leaf)
+		parts := strings.SplitN(filepath.ToSlash(rel), "/", 2)
+		if len(parts) == 0 {
+			break
+		}
+		cur = path.Join(cur, parts[0])
+	}
+	return nil
 }
 
 func delThumbs(ctx context.Context, fileCache FileCache, file *files.FileInfo) error {
@@ -344,7 +430,7 @@ func patchAction(ctx context.Context, action, src, dst string, d *data, fileCach
 			return fberrors.ErrPermissionDenied
 		}
 
-		return fileutils.Copy(d.user.Fs, src, dst, d.settings.FileMode, d.settings.DirMode)
+		return fileutils.CopyOwned(d.user.Fs, src, dst, d.settings.FileMode, d.settings.DirMode, d.user.Ownership())
 	case "rename":
 		if !d.user.Perm.Rename {
 			return fberrors.ErrPermissionDenied

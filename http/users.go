@@ -19,7 +19,7 @@ import (
 )
 
 var (
-	NonModifiableFieldsForNonAdmin = []string{"Username", "Scope", "LockPassword", "Perm", "Commands", "Rules"}
+	NonModifiableFieldsForNonAdmin = []string{"Username", "Scope", "LockPassword", "Perm", "Commands", "Rules", "SystemUID", "SystemGID"}
 )
 
 type modifyUserRequest struct {

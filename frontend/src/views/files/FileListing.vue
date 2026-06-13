@@ -66,6 +66,19 @@
           :counter="fileStore.selectedCount"
         />
         <action
+          v-if="headerButtons.compress"
+          icon="archive"
+          :label="t('buttons.compress')"
+          @action="compress"
+          :counter="fileStore.selectedCount"
+        />
+        <action
+          v-if="headerButtons.extract"
+          icon="unarchive"
+          :label="t('buttons.extract')"
+          @action="extractArchive"
+        />
+        <action
           v-if="headerButtons.upload"
           icon="file_upload"
           id="upload-button"
@@ -302,6 +315,25 @@
             @action="download"
             :counter="fileStore.selectedCount"
           />
+          <action
+            v-if="headerButtons.compress"
+            icon="archive"
+            :label="t('buttons.compress')"
+            @action="compress"
+            :counter="fileStore.selectedCount"
+          />
+          <action
+            v-if="headerButtons.extract"
+            icon="unarchive"
+            :label="t('buttons.extract')"
+            @action="extractArchive"
+          />
+          <action
+            v-if="headerButtons.chmod"
+            icon="lock"
+            :label="t('buttons.chmod')"
+            show="chmod"
+          />
           <action icon="info" :label="t('buttons.info')" show="info" />
         </context-menu>
 
@@ -486,6 +518,15 @@ const headerButtons = computed(() => {
       authStore.user?.perm.download,
     move: fileStore.selectedCount > 0 && authStore.user?.perm.rename,
     copy: fileStore.selectedCount > 0 && authStore.user?.perm.create,
+    compress:
+      fileStore.selectedCount > 0 &&
+      authStore.user?.perm.create &&
+      authStore.user?.perm.download,
+    extract:
+      fileStore.selectedCount === 1 &&
+      authStore.user?.perm.create &&
+      isSelectedArchive.value,
+    chmod: fileStore.selectedCount > 0 && authStore.user?.perm.modify,
   };
 });
 
@@ -632,7 +673,6 @@ const copyCut = (event: Event | KeyboardEvent): void => {
       from: fileStore.req.items[i].url,
       name: fileStore.req.items[i].name,
       size: fileStore.req.items[i].size,
-      isDir: fileStore.req.items[i].isDir,
       modified: fileStore.req.items[i].modified,
     });
   }
@@ -662,7 +702,6 @@ const paste = async (event: Event) => {
       to,
       name: item.name,
       size: item.size,
-      isDir: item.isDir,
       modified: item.modified,
       overwrite: false,
       rename: clipboardStore.path == route.path,
@@ -699,7 +738,7 @@ const paste = async (event: Event) => {
   }
 
   const path = route.path.endsWith("/") ? route.path : route.path + "/";
-  const conflict = await upload.checkConflict(items, path, true);
+  const conflict = await upload.checkConflict(items, path);
 
   if (conflict.length > 0) {
     layoutStore.showHover({
@@ -1003,6 +1042,114 @@ const download = () => {
       api.download(format, ...files);
     },
   });
+};
+
+const archiveExtensions = [
+  ".zip",
+  ".tar",
+  ".tar.gz",
+  ".tgz",
+  ".tar.bz2",
+  ".tbz2",
+  ".tar.xz",
+  ".txz",
+  ".tar.lz4",
+  ".tar.sz",
+  ".tar.br",
+  ".tar.zst",
+  ".rar",
+  ".7z",
+];
+
+const isSelectedArchive = computed(() => {
+  if (fileStore.selectedCount !== 1 || fileStore.req === null) return false;
+  const item = fileStore.req.items[fileStore.selected[0]];
+  if (item.isDir) return false;
+  const name = item.name.toLowerCase();
+  return archiveExtensions.some((ext) => name.endsWith(ext));
+});
+
+const compress = () => {
+  if (fileStore.req === null) return;
+
+  layoutStore.showHover({
+    prompt: "archive",
+    confirm: async (format: string) => {
+      layoutStore.closeHovers();
+
+      const filePaths: string[] = [];
+      if (fileStore.selectedCount > 0 && fileStore.req !== null) {
+        for (const i of fileStore.selected) {
+          filePaths.push(fileStore.req.items[i].url);
+        }
+      }
+
+      if (filePaths.length === 0) return;
+
+      // Determine archive name based on selection
+      const extensions: Record<string, string> = {
+        zip: ".zip",
+        tar: ".tar",
+        targz: ".tar.gz",
+        tarbz2: ".tar.bz2",
+        tarxz: ".tar.xz",
+        tarlz4: ".tar.lz4",
+        tarsz: ".tar.sz",
+        tarbr: ".tar.br",
+        tarzst: ".tar.zst",
+      };
+
+      let archiveName: string;
+      if (filePaths.length === 1) {
+        const name = fileStore.req!.items[fileStore.selected[0]].name;
+        // Remove trailing slash for dirs
+        const baseName = name.replace(/\/$/, "");
+        archiveName = baseName + (extensions[format] || ".zip");
+      } else {
+        archiveName = "archive" + (extensions[format] || ".zip");
+      }
+
+      const currentPath = route.path.endsWith("/")
+        ? route.path
+        : route.path + "/";
+      const destination = currentPath + archiveName;
+
+      try {
+        await api.archive(filePaths, destination, format);
+        fileStore.reload = true;
+      } catch (e: any) {
+        $showError(e);
+      }
+    },
+  });
+};
+
+const extractArchive = async () => {
+  if (fileStore.req === null || fileStore.selectedCount !== 1) return;
+
+  const item = fileStore.req.items[fileStore.selected[0]];
+  const source = item.url;
+
+  // Extract to a folder named like the archive without extension
+  let folderName = item.name;
+  for (const ext of archiveExtensions) {
+    if (folderName.toLowerCase().endsWith(ext)) {
+      folderName = folderName.slice(0, -ext.length);
+      break;
+    }
+  }
+
+  const currentPath = route.path.endsWith("/")
+    ? route.path
+    : route.path + "/";
+  const destination = currentPath + folderName + "/";
+
+  try {
+    await api.extract(source, destination);
+    fileStore.reload = true;
+  } catch (e: any) {
+    $showError(e);
+  }
 };
 
 const switchView = async () => {

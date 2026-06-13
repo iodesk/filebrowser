@@ -10,6 +10,11 @@ import (
 
 // Copy copies a file or folder from one place to another.
 func Copy(afs afero.Fs, src, dst string, fileMode, dirMode fs.FileMode) error {
+	return CopyOwned(afs, src, dst, fileMode, dirMode, Ownership{})
+}
+
+// CopyOwned copies a file or folder and chowns every created entry to own.
+func CopyOwned(afs afero.Fs, src, dst string, fileMode, dirMode fs.FileMode, own Ownership) error {
 	if src = path.Clean("/" + src); src == "" {
 		return os.ErrNotExist
 	}
@@ -33,8 +38,8 @@ func Copy(afs afero.Fs, src, dst string, fileMode, dirMode fs.FileMode) error {
 	}
 
 	if info.IsDir() {
-		return CopyDir(afs, src, dst, fileMode, dirMode)
+		return CopyDirOwned(afs, src, dst, fileMode, dirMode, own)
 	}
 
-	return CopyFile(afs, src, dst, fileMode, dirMode)
+	return CopyFileOwned(afs, src, dst, fileMode, dirMode, own)
 }

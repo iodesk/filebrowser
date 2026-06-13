@@ -22,9 +22,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/spf13/afero"
+
 	fberrors "github.com/filebrowser/filebrowser/v2/errors"
 	"github.com/filebrowser/filebrowser/v2/rules"
-	"github.com/spf13/afero"
 )
 
 var (
@@ -128,7 +129,6 @@ func stat(opts *FileOptions) (*FileInfo, error) {
 		}
 	}
 
-	// regular file
 	if file != nil && !file.IsSymlink {
 		return file, nil
 	}

@@ -11,6 +11,12 @@ import (
 // of its sub-directories. It doesn't stop if it finds an error
 // during the copy. Returns an error if any.
 func CopyDir(afs afero.Fs, source, dest string, fileMode, dirMode fs.FileMode) error {
+	return CopyDirOwned(afs, source, dest, fileMode, dirMode, Ownership{})
+}
+
+// CopyDirOwned copies a directory tree from source to dest and chowns every
+// newly created entry to own.
+func CopyDirOwned(afs afero.Fs, source, dest string, fileMode, dirMode fs.FileMode, own Ownership) error {
 	// Get properties of source.
 	srcinfo, err := afs.Stat(source)
 	if err != nil {
@@ -18,8 +24,10 @@ func CopyDir(afs afero.Fs, source, dest string, fileMode, dirMode fs.FileMode) e
 	}
 
 	// Create the destination directory.
-	err = afs.MkdirAll(dest, srcinfo.Mode())
-	if err != nil {
+	if err = afs.MkdirAll(dest, srcinfo.Mode()); err != nil {
+		return err
+	}
+	if err = own.Chown(realPath(afs, dest)); err != nil {
 		return err
 	}
 
@@ -36,15 +44,11 @@ func CopyDir(afs afero.Fs, source, dest string, fileMode, dirMode fs.FileMode) e
 		fdest := dest + "/" + obj.Name()
 
 		if obj.IsDir() {
-			// Create sub-directories, recursively.
-			err = CopyDir(afs, fsource, fdest, fileMode, dirMode)
-			if err != nil {
+			if err = CopyDirOwned(afs, fsource, fdest, fileMode, dirMode, own); err != nil {
 				errs = append(errs, err)
 			}
 		} else {
-			// Perform the file copy.
-			err = CopyFile(afs, fsource, fdest, fileMode, dirMode)
-			if err != nil {
+			if err = CopyFileOwned(afs, fsource, fdest, fileMode, dirMode, own); err != nil {
 				errs = append(errs, err)
 			}
 		}

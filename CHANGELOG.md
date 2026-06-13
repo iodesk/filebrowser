@@ -2,31 +2,27 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
-## [2.63.14](https://github.com/filebrowser/filebrowser/compare/v2.63.13...v2.63.14) (2026-06-07)
+## [2.63.14-fork.1] (2026-06-08)
 
+### Features (Fork)
 
-### Bug Fixes
+* **chmod**: change file/folder permissions via UI modal with checkbox grid and octal input
+* **ownership**: auto-chown created files to user's SystemUID/SystemGID
+* **archive**: compress files to archive stored on server + extract archives
+* default file permissions changed to 0644 (files) and 0755 (directories)
 
-* recursive check ([3406d3d](https://github.com/filebrowser/filebrowser/commit/3406d3d7f98dfc3c16e4ff7ff4a87e3bdfe221dd))
+### Security (from upstream v2.63.14)
 
+* **ScopedFs**: replace scattered `WithinScope()` checks with filesystem-level symlink confinement (fixes GHSA-c2gv-wf5f-hjhh, GHSA-239w-m3h6-ch8v)
+* recursive copy no longer dereferences escaping symlinks
 
-### Refactorings
+### Refactorings (from upstream v2.63.14)
 
-* ScopedFs to avoid escaping symlinks ([7c2c0a1](https://github.com/filebrowser/filebrowser/commit/7c2c0a11b31b2bb214d741005a0b02b1764208b3))
+* introduce `files.ScopedFs` to enforce symlink scope at every filesystem operation
+* remove `files.WithinScope()` function — no longer needed
+* `users.User.Fs` type changed from `afero.Fs` to `*files.ScopedFs`
 
 ## [2.63.13](https://github.com/filebrowser/filebrowser/compare/v2.63.12...v2.63.13) (2026-06-06)
-
-
-### Bug Fixes
-
-* copy/move allow overwrite ([a1a514d](https://github.com/filebrowser/filebrowser/commit/a1a514dcbb216d2080412c5354eea1e1fb033050))
-
-
-### Refactorings
-
-* cleanup and simplify upload.ts ([5f7311d](https://github.com/filebrowser/filebrowser/commit/5f7311d32437e98d7c14c7b307a4f68109275535))
-
-## [2.63.12](https://github.com/filebrowser/filebrowser/compare/v2.63.11...v2.63.12) (2026-06-04)
 
 
 ### Bug Fixes

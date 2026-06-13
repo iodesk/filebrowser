@@ -9,9 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"golang.org/x/crypto/bcrypt"
+
 	"github.com/filebrowser/filebrowser/v2/files"
 	"github.com/filebrowser/filebrowser/v2/share"
-	"golang.org/x/crypto/bcrypt"
 )
 
 var withHashFile = func(fn handleFunc) handleFunc {

@@ -11,8 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/filebrowser/filebrowser/v2/files"
 	"github.com/spf13/afero"
+
+	"github.com/filebrowser/filebrowser/v2/files"
+	"github.com/filebrowser/filebrowser/v2/fileutils"
 )
 
 // keepUploadActive periodically touches the cache entry to prevent eviction during transfer
@@ -56,8 +58,21 @@ func tusPostHandler(cache UploadCache) handleFunc {
 		case errors.Is(err, afero.ErrFileNotFound):
 			dirPath := filepath.Dir(r.URL.Path)
 			if _, statErr := d.user.Fs.Stat(dirPath); os.IsNotExist(statErr) {
+				// Determine which directories are new before creating them.
+				own := d.user.Ownership()
+				var firstNewDir string
+				if own.IsSet() {
+					firstNewDir = findFirstNewDir(d.user.Fs, dirPath)
+				}
+
 				if mkdirErr := d.user.Fs.MkdirAll(dirPath, d.settings.DirMode); mkdirErr != nil {
 					return http.StatusInternalServerError, err
+				}
+				// Chown all newly created directories in the tree.
+				if own.IsSet() && firstNewDir != "" {
+					if chownErr := chownDirTree(d.user.Fs, firstNewDir, dirPath, own); chownErr != nil {
+						return http.StatusInternalServerError, chownErr
+					}
 				}
 			}
 		case err != nil:
@@ -90,6 +105,16 @@ func tusPostHandler(cache UploadCache) handleFunc {
 			return errToStatus(err), err
 		}
 		defer openFile.Close()
+
+		// Chown the file to the configured system uid:gid immediately after
+		// creation so it is owned correctly from the first inode write.
+		own := d.user.Ownership()
+		if own.IsSet() {
+			realPath := fileutils.RealPath(d.user.Fs, r.URL.Path)
+			if chownErr := own.Chown(realPath); chownErr != nil {
+				return http.StatusInternalServerError, chownErr
+			}
+		}
 
 		file, err = files.NewFileInfo(&files.FileOptions{
 			Fs:         d.user.Fs,

@@ -1,12 +1,17 @@
 package users
 
 import (
+	"log"
+	"os/user"
 	"path/filepath"
+	"strconv"
+
+	"github.com/spf13/afero"
 
 	fberrors "github.com/filebrowser/filebrowser/v2/errors"
 	"github.com/filebrowser/filebrowser/v2/files"
+	"github.com/filebrowser/filebrowser/v2/fileutils"
 	"github.com/filebrowser/filebrowser/v2/rules"
-	"github.com/spf13/afero"
 )
 
 // ViewMode describes a view mode.
@@ -36,6 +41,12 @@ type User struct {
 	HideDotfiles          bool            `json:"hideDotfiles"`
 	DateFormat            bool            `json:"dateFormat"`
 	AceEditorTheme        string          `json:"aceEditorTheme"`
+	// SystemUID and SystemGID, when non-zero, cause every file and directory
+	// created on behalf of this user to be chown'd to the specified OS
+	// uid:gid immediately after creation. Requires filebrowser to run as
+	// root (or with CAP_CHOWN).
+	SystemUID int `json:"systemUID"`
+	SystemGID int `json:"systemGID"`
 }
 
 // GetRules implements rules.Provider.
@@ -101,4 +112,42 @@ func (u *User) Clean(baseScope string, fields ...string) error {
 // FullPath gets the full path for a user's relative path.
 func (u *User) FullPath(path string) string {
 	return afero.FullBaseFsPath(u.Fs.Base(), path)
+}
+
+// Ownership returns the fileutils.Ownership value for this user.
+// When SystemUID/SystemGID are explicitly set (non-zero), those values are
+// used directly. Otherwise it attempts to resolve the user's Username against
+// the OS user database (/etc/passwd on Linux). If the lookup fails the zero
+// Ownership is returned (no chown).
+//
+// Results are cached after the first successful lookup to avoid repeated
+// /etc/passwd reads on every file operation.
+func (u *User) Ownership() fileutils.Ownership {
+	if u.SystemUID != 0 || u.SystemGID != 0 {
+		return fileutils.Ownership{UID: u.SystemUID, GID: u.SystemGID}
+	}
+
+	// Auto-resolve from OS user database.
+	osUser, err := user.Lookup(u.Username)
+	if err != nil {
+		log.Printf("[ownership] user %q: os lookup failed: %v", u.Username, err)
+		return fileutils.Ownership{}
+	}
+
+	uid, err := strconv.Atoi(osUser.Uid)
+	if err != nil {
+		log.Printf("[ownership] user %q: bad UID %q: %v", u.Username, osUser.Uid, err)
+		return fileutils.Ownership{}
+	}
+	gid, err := strconv.Atoi(osUser.Gid)
+	if err != nil {
+		log.Printf("[ownership] user %q: bad GID %q: %v", u.Username, osUser.Gid, err)
+		return fileutils.Ownership{}
+	}
+
+	// Cache the resolved values so subsequent calls don't hit /etc/passwd.
+	u.SystemUID = uid
+	u.SystemGID = gid
+
+	return fileutils.Ownership{UID: uid, GID: gid}
 }
